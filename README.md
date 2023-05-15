@@ -18,7 +18,7 @@ if you are using turbo and you want to have a self hosted remote cache server th
 ```
 1. Provide the url to turbo cli
 ```bash
-turbo build --api http://localhost:4000 --token <token> --team <team> 
+turbo build --api="http://localhost:4000" --token=<token> --team=<team> 
 ```
 you can also set `teamId` and `apiUrl` `.turbo/config.json` in the root of your project.
 
