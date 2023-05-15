@@ -1,18 +1,23 @@
+use std::sync::Mutex;
+
 use actix_web::{
-    web::{Path, Query},
+    web::{Data, Path, Query},
     HttpResponse,
 };
 use serde::{Deserialize, Serialize};
 
+use crate::storage::StorageStore;
+
 #[derive(Serialize)]
 pub struct BoomResponse {
-    statusCode: i32,
+    #[serde(rename = "statusCode")]
+    status_code: i32,
     error: Option<String>,
     message: String,
 }
 pub fn bad_request(message: String) -> HttpResponse {
     let value = BoomResponse {
-        statusCode: 400,
+        status_code: 400,
         error: Some("Bad Request".to_string()),
         message,
     };
@@ -23,7 +28,7 @@ pub fn bad_request(message: String) -> HttpResponse {
 
 pub fn not_found(message: String) -> HttpResponse {
     let value = BoomResponse {
-        statusCode: 404,
+        status_code: 404,
         error: Some("Not Found".to_string()),
         message,
     };
@@ -34,7 +39,7 @@ pub fn not_found(message: String) -> HttpResponse {
 
 pub fn internal_server_error(message: String) -> HttpResponse {
     let value = BoomResponse {
-        statusCode: 500,
+        status_code: 500,
         error: Some("Internal Server Error".to_string()),
         message,
     };
@@ -45,7 +50,7 @@ pub fn internal_server_error(message: String) -> HttpResponse {
 
 pub fn not_implemented(message: String) -> HttpResponse {
     let value = BoomResponse {
-        statusCode: 501,
+        status_code: 501,
         error: Some("Not Implemented".to_string()),
         message,
     };
@@ -56,7 +61,7 @@ pub fn not_implemented(message: String) -> HttpResponse {
 
 pub fn precondition_failed(message: String) -> HttpResponse {
     let value = BoomResponse {
-        statusCode: 412,
+        status_code: 412,
         error: Some("Precondition Failed".to_string()),
         message,
     };
@@ -67,7 +72,7 @@ pub fn precondition_failed(message: String) -> HttpResponse {
 
 pub fn ok(message: String) -> HttpResponse {
     let value = BoomResponse {
-        statusCode: 200,
+        status_code: 200,
         error: None,
         message,
     };
@@ -78,7 +83,8 @@ pub fn ok(message: String) -> HttpResponse {
 
 #[derive(Deserialize)]
 pub struct GetArtifactQuery {
-    teamId: Option<String>,
+    #[serde(rename = "teamId")]
+    team_id: Option<String>,
     slug: Option<String>,
 }
 
@@ -87,15 +93,31 @@ pub fn artifact_params_or_400(
     query: Query<GetArtifactQuery>,
 ) -> Result<(String, String), HttpResponse> {
     let id = path.into_inner();
-    let GetArtifactQuery { teamId, slug } = query.into_inner();
+    let GetArtifactQuery { team_id, slug } = query.into_inner();
 
-    if teamId.is_none() && slug.is_none() {
+    if team_id.is_none() && slug.is_none() {
         return Err(bad_request(
             "querystring should have required property 'teamId'".to_string(),
         ));
     }
 
-    let team_id = teamId.unwrap_or_else(|| slug.unwrap().to_string());
+    let team_id = team_id.unwrap_or_else(|| slug.unwrap().to_string());
 
     Ok((id, team_id))
+}
+
+pub fn get_artifact_path(artifact_id: String, team_id: String) -> String {
+    format!("{}/{}", team_id, artifact_id)
+}
+
+pub async fn exists_cached_artifact(
+    artifact_id: String,
+    team_id: String,
+    storage: &Data<Mutex<StorageStore>>,
+) -> Result<bool, String> {
+    let artifact_path = get_artifact_path(artifact_id, team_id);
+    if !storage.lock().unwrap().exists(&artifact_path).await {
+        return Err(format!("Artifact {} doesn't exist.", artifact_path));
+    }
+    Ok(true)
 }

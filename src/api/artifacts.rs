@@ -1,10 +1,15 @@
+use std::sync::Mutex;
+
 use crate::{
-    helpers::{artifact_params_or_400, internal_server_error, not_found, GetArtifactQuery},
-    storage::local::{create_cached_artifact, exists_cached_artifact, get_cached_artifact},
+    helpers::{
+        artifact_params_or_400, exists_cached_artifact, get_artifact_path, not_found,
+        GetArtifactQuery,
+    },
+    storage::StorageStore,
 };
 use actix_web::{
-    web::{get, head, post, put, resource, scope, Bytes, Path, Query, ServiceConfig},
-    HttpRequest, HttpResponse, Responder,
+    web::{get, head, post, put, resource, scope, Bytes, Data, Path, Query, ServiceConfig},
+    HttpResponse, Responder,
 };
 use serde::Serialize;
 
@@ -33,13 +38,20 @@ pub async fn get_status() -> impl Responder {
         .json(obj)
 }
 
-pub async fn head_artifact(path: Path<String>, query: Query<GetArtifactQuery>) -> impl Responder {
+pub async fn head_artifact(
+    path: Path<String>,
+    query: Query<GetArtifactQuery>,
+    storage: Data<Mutex<StorageStore>>,
+) -> impl Responder {
     let (id, team_id) = match artifact_params_or_400(path, query) {
         Ok((id, team_id)) => (id, team_id),
         Err(e) => return e,
     };
 
-    if exists_cached_artifact(id, team_id).is_ok() {
+    if exists_cached_artifact(id.clone(), team_id.clone(), &storage)
+        .await
+        .is_ok()
+    {
         HttpResponse::Ok()
             .content_type("application/json")
             .body("true")
@@ -48,19 +60,26 @@ pub async fn head_artifact(path: Path<String>, query: Query<GetArtifactQuery>) -
     }
 }
 pub async fn get_artifact(
-    req: HttpRequest,
     path: Path<String>,
     query: Query<GetArtifactQuery>,
+    storage: Data<Mutex<StorageStore>>,
 ) -> impl Responder {
     let (id, team_id) = match artifact_params_or_400(path, query) {
         Ok((id, team_id)) => (id, team_id),
         Err(e) => return e,
     };
+    println!("get_artifact before the check: {}", id);
+    if exists_cached_artifact(id.clone(), team_id.clone(), &storage)
+        .await
+        .is_ok()
+    {
+        println!("get_artifact: {}", id);
 
-    if exists_cached_artifact(id.clone(), team_id.clone()).is_ok() {
-        let artifact = get_cached_artifact(id, team_id).await.unwrap();
-
-        artifact.into_response(&req)
+        let path: String = get_artifact_path(id, team_id);
+        let data = storage.lock().unwrap().get(&path).await.unwrap();
+        HttpResponse::Ok()
+            .content_type("application/octet-stream")
+            .body(data)
     } else {
         not_found("Artifact not found".to_string())
     }
@@ -70,21 +89,19 @@ pub async fn put_artifact(
     path: Path<String>,
     query: Query<GetArtifactQuery>,
     body: Bytes,
+    storage: Data<Mutex<StorageStore>>,
 ) -> impl Responder {
     let (id, team_id) = match artifact_params_or_400(path, query) {
         Ok((id, team_id)) => (id, team_id),
         Err(e) => return e,
     };
     // store artifact
-    match create_cached_artifact(id.clone(), team_id.clone(), body) {
-        Ok(_) => (),
-        Err(message) => return internal_server_error(message),
-    };
-    HttpResponse::Accepted()
+    let path = get_artifact_path(id, team_id);
+    println!("put_artifact: {}", path);
+    storage.lock().unwrap().put(&path, body).await;
+    HttpResponse::Ok()
         .content_type("application/json")
-        .json(PutArtifactResponse {
-            urls: vec![format!("{}/{}", team_id, id)],
-        })
+        .json(PutArtifactResponse { urls: vec![path] })
 }
 
 pub fn config(cfg: &mut ServiceConfig) {
