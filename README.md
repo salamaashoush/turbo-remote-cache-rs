@@ -9,20 +9,20 @@ if you are using turbo and you want to have a self hosted remote cache server th
 
 ## Usage
 
-1. Download the latest binary from [release page]()
+1. Download the latest binary from [release page](https://github.com/salamaashoush/turbo-remote-cache-rs/releases)
 2. Copy `.env.example` to same directory as the binary and rename it to `.env`.
 3. Edit `.env` file to your needs (`TURBO_TOKENS`, `BUCKET_NAME` are required) please refer to [`.env.example`](./.env.example) for more information about required vars for each cloud storage provider.
 4. Run the binary.
 ```bash
 ./turbo-repo-remote-cache-rs
 ```
-5. Provide the url to turbo cli
+1. Provide the url to turbo cli
 ```bash
 turbo build --api http://localhost:4000 --token <token> --team <team> 
 ```
 you can also set `teamId` and `apiUrl` `.turbo/config.json` in the root of your project.
 
-6. Enjoy your self hosted remote cache and faster builds 🚀.
+1. Enjoy your self hosted remote cache and faster builds 🚀.
 
 ## Todo
 
