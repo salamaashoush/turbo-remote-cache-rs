@@ -26,9 +26,9 @@ you can also set `teamId` and `apiUrl` `.turbo/config.json` in the root of your 
 
 ## Todo
 
-[] Support turbo headers `x-artifact-duration`, `x-artifact-tag`, `x-artifact-client-ci` and `x-artifact-client-interactive` right now those are ignored and they don't affect the cache.
-[] Add nx cloud support.
-[] Publish docker images.
-[] Add more advanced authentication support.
-[] Maybe having a dashboard to manage teams and projects would be nice.
+- [ ] Support turbo headers `x-artifact-duration`, `x-artifact-tag`, `x-artifact-client-ci` and `x-artifact-client-interactive` right now those are ignored and they don't affect the cache.
+- [ ] Add nx cloud support.
+- [ ] Publish docker images.
+- [ ] Add more advanced authentication support.
+- [ ] Maybe having a dashboard to manage teams and projects would be nice.
 
