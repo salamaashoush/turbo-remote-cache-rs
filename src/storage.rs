@@ -5,7 +5,7 @@ use object_store::{
     local::LocalFileSystem, path::Path, Error, ObjectStore,
 };
 
-use std::sync::Arc;
+use std::{fs::create_dir_all, sync::Arc};
 
 use crate::config::{get_bucket_name, get_fs_cache_path, get_storage_provider};
 pub struct StorageStore {
@@ -58,6 +58,8 @@ fn get_s3_store(bucket_name: &str) -> Result<Arc<dyn ObjectStore>, String> {
 fn get_file_store(bucket_name: &str) -> Result<Arc<dyn ObjectStore>, String> {
     let fs_root = get_fs_cache_path();
     let cache_path = format!("{}/{}", fs_root, bucket_name);
+    // create the folder if it doesn't exist
+    create_dir_all(&cache_path).expect("error creating cache folder");
     let local = LocalFileSystem::new_with_prefix(cache_path).expect("error creating local");
     Ok(Arc::new(local))
 }

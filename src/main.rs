@@ -6,7 +6,7 @@ pub mod storage;
 
 use actix_cors::Cors;
 use actix_web::{
-    middleware::{ErrorHandlers, Logger},
+    middleware::Logger,
     web::{scope, Data, PayloadConfig},
     App, HttpServer,
 };
@@ -22,24 +22,22 @@ async fn main() -> std::io::Result<()> {
     std::env::set_var("RUST_BACKTRACE", "1");
     env_logger::init();
 
-    // let storage: Arc<StorageStore> = Arc::new(StorageStore::new());
     let storage = Data::new(Mutex::new(StorageStore::new()));
     HttpServer::new(move || {
         App::new()
+            .wrap(auth::Auth)
             .wrap(Logger::default())
-            .wrap(ErrorHandlers::default())
             .wrap(
                 Cors::default()
                     .allow_any_header()
                     .allow_any_method()
                     .allow_any_origin(),
             )
-            .wrap(auth::Auth)
             .app_data(storage.clone())
             .service(scope("/v8").configure(artifacts::config))
             .app_data(PayloadConfig::new(104857600))
     })
-    .bind(("127.0.0.1", config::get_port()))?
+    .bind(("0.0.0.0", config::get_port()))?
     .run()
     .await
 }

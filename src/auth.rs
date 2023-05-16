@@ -45,16 +45,19 @@ where
 
     fn call(&self, request: ServiceRequest) -> Self::Future {
         let turbo_token = get_turbo_token();
-        let auth_header = request.headers().get("Authorization").unwrap();
-        let auth_header_value = auth_header
-            .to_str()
-            .unwrap()
-            .split("Bearer ")
-            .collect::<Vec<&str>>()[1];
+        let auth_header = request.headers().get("Authorization");
+        let auth_header_value = match auth_header {
+            None => {
+                let (req, _pl) = request.into_parts();
+                let response = bad_request("Missing Turbo Token".to_string()).map_into_right_body();
+                return Box::pin(async { Ok(ServiceResponse::new(req, response)) });
+            }
+            Some(v) => v.to_str().unwrap().split("Bearer ").collect::<Vec<&str>>()[1],
+        };
         if auth_header_value != turbo_token {
-            let (request, _pl) = request.into_parts();
+            let (req, _pl) = request.into_parts();
             let response = bad_request("Invalid Turbo Token".to_string()).map_into_right_body();
-            return Box::pin(async { Ok(ServiceResponse::new(request, response)) });
+            return Box::pin(async { Ok(ServiceResponse::new(req, response)) });
         }
 
         let res = self.service.call(request);
