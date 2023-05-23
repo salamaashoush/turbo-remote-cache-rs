@@ -7,7 +7,7 @@ use actix_web::{
 };
 use futures_util::future::LocalBoxFuture;
 
-use crate::{config::get_turbo_token, helpers::bad_request};
+use crate::{config::get_turbo_tokens, helpers::bad_request};
 
 pub struct Auth;
 
@@ -44,7 +44,7 @@ where
     dev::forward_ready!(service);
 
     fn call(&self, request: ServiceRequest) -> Self::Future {
-        let turbo_token = get_turbo_token();
+        let turbo_tokens = get_turbo_tokens();
         let auth_header = request.headers().get("Authorization");
         let auth_header_value = match auth_header {
             None => {
@@ -54,7 +54,8 @@ where
             }
             Some(v) => v.to_str().unwrap().split("Bearer ").collect::<Vec<&str>>()[1],
         };
-        if auth_header_value != turbo_token {
+
+        if !turbo_tokens.contains(&auth_header_value.to_string()) {
             let (req, _pl) = request.into_parts();
             let response = bad_request("Invalid Turbo Token".to_string()).map_into_right_body();
             return Box::pin(async { Ok(ServiceResponse::new(req, response)) });

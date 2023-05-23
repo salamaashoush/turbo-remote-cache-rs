@@ -10,16 +10,21 @@ use actix_web::{
     web::{scope, Data, PayloadConfig},
     App, HttpServer,
 };
-use std::sync::Mutex;
+use std::{
+    env::{args, set_var},
+    path::Path,
+    sync::Mutex,
+};
 
 use api::artifacts;
 use storage::StorageStore;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    dotenv::dotenv().ok();
-    std::env::set_var("RUST_LOG", "info");
-    std::env::set_var("RUST_BACKTRACE", "1");
+    let env_file = args().nth(1).unwrap_or(".env".to_string());
+    dotenv::from_path(Path::new(&env_file)).ok();
+    set_var("RUST_LOG", "info");
+    set_var("RUST_BACKTRACE", "1");
     env_logger::init();
 
     let storage = Data::new(Mutex::new(StorageStore::new()));

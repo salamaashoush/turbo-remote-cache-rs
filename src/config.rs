@@ -10,20 +10,26 @@ pub fn get_fs_cache_path() -> String {
 }
 
 pub fn get_bucket_name() -> String {
-    std::env::var("BUCKET_NAME").expect("BUCKET_NAME is not set.")
+    std::env::var("BUCKET_NAME").unwrap_or("cache".to_string())
 }
 
 pub fn get_port() -> u16 {
     std::env::var("PORT")
-        .unwrap_or_else(|_| "4000".to_string())
+        .unwrap_or("4000".to_string())
         .parse()
         .unwrap()
 }
 
-pub fn get_turbo_token() -> String {
-    std::env::var("TURBO_TOKEN").expect("TURBO_TOKEN is not set.")
+pub fn get_turbo_tokens() -> Vec<String> {
+    let tokens_str = std::env::var("TURBO_TOKENS").expect("TURBO_TOKENS is not set.");
+    tokens_str
+        .to_string()
+        .split(',')
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect()
 }
 
 pub fn get_storage_provider() -> String {
-    std::env::var("STORAGE_PROVIDER").unwrap_or_else(|_| "file".to_string())
+    std::env::var("STORAGE_PROVIDER").unwrap_or("file".to_string())
 }
