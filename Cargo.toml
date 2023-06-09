@@ -16,5 +16,5 @@ chrono = { version = "0.4", features = ["serde"] }
 actix-cors = "^0.6"
 dotenv = "^0.15"
 futures-util = "^0.3"
-object_store = { version = "^0.5", features = ["aws", "azure", "gcp"] }
+object_store = { version = "^0.6", features = ["aws", "azure", "gcp"] }
 futures = "^0.3"

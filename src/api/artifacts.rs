@@ -1,5 +1,3 @@
-use std::sync::Mutex;
-
 use crate::{
     helpers::{
         artifact_params_or_400, exists_cached_artifact, get_artifact_path, not_found,
@@ -41,7 +39,7 @@ pub async fn get_status() -> impl Responder {
 pub async fn head_artifact(
     path: Path<String>,
     query: Query<GetArtifactQuery>,
-    storage: Data<Mutex<StorageStore>>,
+    storage: Data<StorageStore>,
 ) -> impl Responder {
     let (id, team_id) = match artifact_params_or_400(path, query) {
         Ok((id, team_id)) => (id, team_id),
@@ -62,7 +60,7 @@ pub async fn head_artifact(
 pub async fn get_artifact(
     path: Path<String>,
     query: Query<GetArtifactQuery>,
-    storage: Data<Mutex<StorageStore>>,
+    storage: Data<StorageStore>,
 ) -> impl Responder {
     let (id, team_id) = match artifact_params_or_400(path, query) {
         Ok((id, team_id)) => (id, team_id),
@@ -76,7 +74,7 @@ pub async fn get_artifact(
         println!("get_artifact: {}", id);
 
         let path: String = get_artifact_path(id, team_id);
-        let data = storage.lock().unwrap().get(&path).await.unwrap();
+        let data = storage.get(&path).await.unwrap();
         HttpResponse::Ok()
             .content_type("application/octet-stream")
             .body(data)
@@ -89,7 +87,7 @@ pub async fn put_artifact(
     path: Path<String>,
     query: Query<GetArtifactQuery>,
     body: Bytes,
-    storage: Data<Mutex<StorageStore>>,
+    storage: Data<StorageStore>,
 ) -> impl Responder {
     let (id, team_id) = match artifact_params_or_400(path, query) {
         Ok((id, team_id)) => (id, team_id),
@@ -98,7 +96,7 @@ pub async fn put_artifact(
     // store artifact
     let path = get_artifact_path(id, team_id);
     println!("put_artifact: {}", path);
-    storage.lock().unwrap().put(&path, body).await;
+    storage.put(&path, body).await;
     HttpResponse::Ok()
         .content_type("application/json")
         .json(PutArtifactResponse { urls: vec![path] })

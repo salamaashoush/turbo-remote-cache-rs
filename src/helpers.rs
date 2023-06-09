@@ -1,5 +1,3 @@
-use std::sync::Mutex;
-
 use actix_web::{
     web::{Data, Path, Query},
     HttpResponse,
@@ -113,10 +111,10 @@ pub fn get_artifact_path(artifact_id: String, team_id: String) -> String {
 pub async fn exists_cached_artifact(
     artifact_id: String,
     team_id: String,
-    storage: &Data<Mutex<StorageStore>>,
+    storage: &Data<StorageStore>,
 ) -> Result<bool, String> {
     let artifact_path = get_artifact_path(artifact_id, team_id);
-    if !storage.lock().unwrap().exists(&artifact_path).await {
+    if !storage.exists(&artifact_path).await {
         return Err(format!("Artifact {} doesn't exist.", artifact_path));
     }
     Ok(true)

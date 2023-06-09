@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: remote-cache
+  labels:
+    app: remote-cache
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: remote-cache
+  template:
+    metadata:
+      labels:
+        app: remote-cache
+    spec:
+      containers:
+      - name: remote-cache
+        image: salamaashoush/turbo-remote-cache-rs
+        command: ["turbo-remote-cache"]
+        resources:
+          limits:
+            memory: 2Gi
+            cpu: "2"
+          requests:
+            memory: 1Gi
+            cpu: "1"
+        # ports:
+        # - containerPort: 4000
+        #   name: web
+        #   protocol: TCP
+        # readinessProbe:
+        #   httpGet:
+        #     port: web
+        #     path: /v8/artifacts/status
+        env:
+        - name: PORT
+          value: "4000"
+        - name: FS_PATH
+          value: /tmp
+        - name: BUCKET_NAME
+          value: remote-cache
+        - name: TURBO_TOKENS
+          value: "token1,token2,token3"
+        volumeMounts:
+        - name: remote-cache-volume
+          mountPath: /tmp/remote-cache
+      volumes:
+      - name: remote-cache-volume
+        persistentVolumeClaim:
+          claimName: remote-cache-pvc
+      

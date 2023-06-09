@@ -13,7 +13,6 @@ use actix_web::{
 use std::{
     env::{args, set_var},
     path::Path,
-    sync::Mutex,
 };
 
 use api::artifacts;
@@ -27,7 +26,6 @@ async fn main() -> std::io::Result<()> {
     set_var("RUST_BACKTRACE", "1");
     env_logger::init();
 
-    let storage = Data::new(Mutex::new(StorageStore::new()));
     HttpServer::new(move || {
         App::new()
             .wrap(auth::Auth)
@@ -38,7 +36,7 @@ async fn main() -> std::io::Result<()> {
                     .allow_any_method()
                     .allow_any_origin(),
             )
-            .app_data(storage.clone())
+            .app_data(Data::new(StorageStore::new()))
             .service(scope("/v8").configure(artifacts::config))
             .app_data(PayloadConfig::new(104857600))
     })

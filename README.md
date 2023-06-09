@@ -1,11 +1,12 @@
 # turbo-repo-remote-cache-rs
 
 Fast turbo remote cache server written in Rust.
-if you are using turbo and you want to have a self hosted remote cache server this is for you.
+
+if you are using turbo and you want to have a self-hosted remote cache server this is for you.
 
 1. It is fast ⚡️.
-2. It supports multiple object storage provider (s3, gcp, azure, file).
-  
+2. It supports multiple object storage providers (S3, GCP, Azure, and file).
+
 
 ## Usage
 
@@ -44,15 +45,17 @@ docker build -t your-image .
 ```bash
 docker run -p 4000:4000 -v ./cache:/tmp/cache your-image
 ```
-4. Provide the url to turbo cli
+4. Provide the URL to turbo cli
 ```bash
 turbo build --api="http://localhost:4000" --token=<token> --team=<team> 
 ```
 you can also set `teamId` and `apiUrl` `.turbo/config.json` in the root of your project.
 
+## Kubernetes
+See example in [examples/k8s](./examples/k8s), Don't forget to change the spec and env vars for your needs before applying it (NOTE that it is just an example and it is not production ready).
 
 ## Environment Variables
-all 
+
 ### Required
 | Name | Description | Default |
 |------|-------------|---------|
