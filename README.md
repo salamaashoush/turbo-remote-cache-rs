@@ -1,4 +1,5 @@
 # turbo-repo-remote-cache-rs
+[![CI](https://github.com/salamaashoush/turbo-remote-cache-rs/actions/workflows/docker.yml/badge.svg)](https://github.com/salamaashoush/turbo-remote-cache-rs/actions/workflows/docker.yml)
 
 Fast turbo remote cache server written in Rust.
 
