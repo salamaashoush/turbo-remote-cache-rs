@@ -7,7 +7,7 @@ use object_store::{
 
 use std::{fs::create_dir_all, sync::Arc};
 
-use crate::config::{get_bucket_name, get_fs_cache_path, get_storage_provider};
+use crate::server::config::{get_bucket_name, get_fs_cache_path, get_storage_provider};
 pub struct StorageStore {
     object_store: Arc<dyn ObjectStore>,
 }

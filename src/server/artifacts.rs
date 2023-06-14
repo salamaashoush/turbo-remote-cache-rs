@@ -1,4 +1,4 @@
-use crate::{
+use crate::server::{
     helpers::{
         artifact_params_or_400, exists_cached_artifact, get_artifact_path, not_found,
         GetArtifactQuery,

@@ -4,7 +4,7 @@ use actix_web::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::storage::StorageStore;
+use crate::server::storage::StorageStore;
 
 #[derive(Serialize)]
 pub struct BoomResponse {

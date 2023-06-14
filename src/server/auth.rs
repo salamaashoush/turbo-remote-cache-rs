@@ -7,7 +7,7 @@ use actix_web::{
 };
 use futures_util::future::LocalBoxFuture;
 
-use crate::{config::get_turbo_tokens, helpers::bad_request};
+use crate::server::{config::get_turbo_tokens, helpers::bad_request};
 
 pub struct Auth;
 
