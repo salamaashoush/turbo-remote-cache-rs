@@ -29,10 +29,10 @@ spec:
         # - containerPort: 4000
         #   name: web
         #   protocol: TCP
-        # readinessProbe:
-        #   httpGet:
-        #     port: web
-        #     path: /v8/artifacts/status
+        readinessProbe:
+          httpGet:
+            port: 4000
+            path: /v8/artifacts/status
         env:
         - name: PORT
           value: "4000"

@@ -1,4 +1,5 @@
 use crate::{
+    auth::Auth,
     helpers::{
         artifact_params_or_400, exists_cached_artifact, get_artifact_path, not_found,
         GetArtifactQuery,
@@ -105,8 +106,8 @@ pub async fn put_artifact(
 pub fn config(cfg: &mut ServiceConfig) {
     cfg.service(
         scope("/artifacts")
+            .wrap(Auth)
             .route("/events", post().to(post_artifacts_events))
-            .route("/status", get().to(get_status))
             .service(
                 resource("/{id}")
                     .route(get().to(get_artifact))

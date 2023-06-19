@@ -7,7 +7,7 @@ pub mod storage;
 use actix_cors::Cors;
 use actix_web::{
     middleware::Logger,
-    web::{scope, Data, PayloadConfig},
+    web::{get, scope, Data, PayloadConfig},
     App, HttpServer,
 };
 use std::{
@@ -28,7 +28,6 @@ async fn main() -> std::io::Result<()> {
 
     HttpServer::new(move || {
         App::new()
-            .wrap(auth::Auth)
             .wrap(Logger::default())
             .wrap(
                 Cors::default()
@@ -37,7 +36,11 @@ async fn main() -> std::io::Result<()> {
                     .allow_any_origin(),
             )
             .app_data(Data::new(StorageStore::new()))
-            .service(scope("/v8").configure(artifacts::config))
+            .service(
+                scope("/v8")
+                    .route("/artifacts/status", get().to(artifacts::get_status))
+                    .configure(artifacts::config),
+            )
             .app_data(PayloadConfig::new(104857600))
     })
     .bind(("0.0.0.0", config::get_port()))?
