@@ -1,0 +1,21 @@
+# https://github.com/crate-ci/typos
+# cargo install typos-cli
+# typos
+
+[files]
+extend-exclude = [
+  "**/*.snap",
+  "pnpm-lock.yaml",
+  "**/*/CHANGELOG.md",
+  "**/*.svg",
+]
+
+[default.extend-words]
+trivias = "trivias"
+trivia = "trivia"
+xdescribe = "xdescribe"
+seeked = "seeked"
+labeledby = "labeledby"
+
+[default.extend-identifiers]
+IIFEs = "IIFEs"

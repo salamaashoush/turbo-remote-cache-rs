@@ -1,0 +1,15 @@
+[target.aarch64-unknown-linux-musl]
+linker = "aarch64-linux-musl-gcc"
+rustflags = ["-C", "target-feature=-crt-static"]
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+
+
+
+[alias]
+# Do not append `--` or it will break IDEs
+ck        = "check --workspace --all-features --all-targets --locked"
+lint      = "clippy --workspace --all-targets --all-features"
+codecov   = "llvm-cov --workspace --ignore-filename-regex tasks"
+
