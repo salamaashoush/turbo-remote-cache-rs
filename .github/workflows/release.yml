@@ -128,7 +128,7 @@ jobs:
     permissions:
       contents: write # for softprops/action-gh-release@v1
       id-token: write # for `npm publish --provenance`
-    
+
     steps:
       - uses: taiki-e/checkout-action@v1
 
