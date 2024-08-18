@@ -1,5 +1,5 @@
 ---
-"turbo-remote-cache-rs": minor
+"turbo-remote-cache-rs": patch
 ---
 
 Deps update
