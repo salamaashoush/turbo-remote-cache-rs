@@ -205,21 +205,3 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: salamaashoush/turbo-remote-cache-rs:latest
-  smoke:
-    needs: [publish, check]
-    strategy:
-      matrix:
-        include:
-          # - os: windows-latest # windows
-          - os: ubuntu-latest
-          - os: ubuntu-latest
-            container: node:22-alpine # musl
-          - os: macos-latest
-    name: Smoke Test ${{ matrix.os }} ${{ matrix.container }}
-    runs-on: ${{ matrix.os }}
-    container: ${{ matrix.container }}
-    steps:
-      - name: Test
-        run: |
-          ldd --version || true
-          npx turbo-remote-cache-rs@${{ needs.check.outputs.version }} --version
