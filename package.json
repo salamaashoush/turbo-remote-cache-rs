@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "repository": {
     "type": "git",
-    "url": "git@github.com:salamaaashoush/turbo-remote-cache-rs.git"
+    "url": "https://github.com/salamaashoush/turbo-remote-cache-rs"
   },
   "author": "Salama Ashoush <salamaaashoush@gmail.com>",
   "packageManager": "pnpm@9.8.0",
