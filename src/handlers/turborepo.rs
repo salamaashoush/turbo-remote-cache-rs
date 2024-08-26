@@ -23,6 +23,6 @@ pub async fn get_token(query: Query<GetArtifactQuery>) -> impl Responder {
     .json(obj)
 }
 
-pub fn config(cfg: &mut ServiceConfig) {
+pub fn configure(cfg: &mut ServiceConfig) {
   cfg.service(scope("/turborepo").route("/token", get().to(get_token)));
 }

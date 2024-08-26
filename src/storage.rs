@@ -1,3 +1,4 @@
+use crate::config::{Config, StorageProvider};
 use actix_web::web::Bytes;
 use log::debug;
 use object_store::PutPayload;
@@ -5,31 +6,10 @@ use object_store::{
   aws::AmazonS3Builder, azure::MicrosoftAzureBuilder, gcp::GoogleCloudStorageBuilder,
   local::LocalFileSystem, memory::InMemory, path::Path, Error, ObjectStore,
 };
-
 use std::{fs::create_dir_all, sync::Arc};
 
-use crate::config::{get_bucket_name, get_fs_cache_path, get_storage_provider};
 pub struct StorageStore {
   object_store: Arc<dyn ObjectStore>,
-}
-enum Provider {
-  S3,
-  File,
-  Gcs,
-  Azure,
-  Memory,
-}
-
-fn detect_provider_from_env() -> Provider {
-  let provider = get_storage_provider();
-  match provider.as_str() {
-    "s3" => Provider::S3,
-    "file" => Provider::File,
-    "gcs" => Provider::Gcs,
-    "azure" => Provider::Azure,
-    "memory" => Provider::Memory,
-    _ => panic!("Invalid storage provider"),
-  }
 }
 
 fn get_gcs_store(bucket_name: &str) -> Result<Arc<dyn ObjectStore>, String> {
@@ -58,9 +38,8 @@ fn get_s3_store(bucket_name: &str) -> Result<Arc<dyn ObjectStore>, String> {
   Ok(Arc::new(s3))
 }
 
-fn get_file_store(bucket_name: &str) -> Result<Arc<dyn ObjectStore>, String> {
-  let fs_root = get_fs_cache_path();
-  let cache_path = format!("{}/{}", fs_root, bucket_name);
+fn get_file_store(bucket_name: &str, fs_cache_path: &str) -> Result<Arc<dyn ObjectStore>, String> {
+  let cache_path = format!("{}/{}", fs_cache_path, bucket_name);
   // create the folder if it doesn't exist
   create_dir_all(&cache_path).expect("error creating cache folder");
   let local = LocalFileSystem::new_with_prefix(cache_path).expect("error creating local");
@@ -71,27 +50,26 @@ fn get_memory_store() -> Result<Arc<dyn ObjectStore>, String> {
   Ok(Arc::new(InMemory::new()))
 }
 
-fn get_object_store(provider: Provider) -> Result<Arc<dyn ObjectStore>, String> {
-  let bucket_name = get_bucket_name();
-  match provider {
-    Provider::Memory => get_memory_store(),
-    Provider::S3 => get_s3_store(&bucket_name),
-    Provider::Azure => get_azure_store(&bucket_name),
-    Provider::Gcs => get_gcs_store(&bucket_name),
-    Provider::File => get_file_store(&bucket_name),
+fn get_object_store(config: &Config) -> Result<Arc<dyn ObjectStore>, String> {
+  let bucket_name = config.bucket_name.as_str();
+  match config.storage_provider {
+    StorageProvider::Memory => get_memory_store(),
+    StorageProvider::S3 => get_s3_store(bucket_name),
+    StorageProvider::Azure => get_azure_store(bucket_name),
+    StorageProvider::Gcs => get_gcs_store(bucket_name),
+    StorageProvider::File => get_file_store(bucket_name, &config.fs_cache_path),
   }
 }
 
 impl Default for StorageStore {
   fn default() -> Self {
-    Self::new()
+    Self::new(&Config::default())
   }
 }
 impl StorageStore {
-  pub fn new() -> Self {
-    let provider = detect_provider_from_env();
+  pub fn new(config: &Config) -> Self {
     // create an ObjectStore
-    let object_store: Arc<dyn ObjectStore> = match get_object_store(provider) {
+    let object_store: Arc<dyn ObjectStore> = match get_object_store(config) {
       Ok(store) => store,
       Err(e) => panic!("{}", e),
     };
