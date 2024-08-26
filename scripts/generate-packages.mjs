@@ -23,8 +23,11 @@ const rootManifest = JSON.parse(readFileSync(MANIFEST_PATH).toString("utf-8"));
 const LIBC_MAPPING = {
   gnu: "glibc",
   musl: "musl",
-} as const;
+};
 
+/**
+ * @param {string} target
+ */
 function generateNativePackage(target) {
   const packageName = `@${PACKAGE_BIN_NAME}/${target}`;
   const packageRoot = resolve(
