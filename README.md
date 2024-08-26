@@ -1,7 +1,5 @@
 # turbo-repo-remote-cache-rs
 
-[![CircleCI](https://dl.circleci.com/status-badge/img/gh/salamaashoush/turbo-remote-cache-rs/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/salamaashoush/turbo-remote-cache-rs/tree/main)
-
 Fast turbo remote cache server written in Rust.
 
 if you are using turbo and you want to have a self-hosted remote cache server this is for you.
