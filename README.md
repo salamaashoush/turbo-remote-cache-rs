@@ -1,5 +1,8 @@
 # turbo-repo-remote-cache-rs
 
+<span class="badge-npmversion"><a href="https://npmjs.org/package/turbo-remote-cache-rs" title="View this project on NPM"><img src="https://img.shields.io/npm/v/turbo-remote-cache-rs.svg" alt="NPM version" /></a></span>
+<span class="badge-crates"><a href="https://crates.io/crates/turbo-remote-cache-rs" title="View this project on Crates.io"><img alt="Crates.io Version" src="https://img.shields.io/crates/v/turbo-remote-cache-rs"></a></span>
+
 Fast turbo remote cache server written in Rust.
 
 if you are using turbo and you want to have a self-hosted remote cache server this is for you.
