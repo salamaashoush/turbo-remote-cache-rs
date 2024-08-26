@@ -2,6 +2,7 @@ use actix_web::{
   web::{Data, Path, Query},
   HttpResponse,
 };
+use log::error;
 use serde::{Deserialize, Serialize};
 
 use crate::storage::StorageStore;
@@ -24,7 +25,19 @@ pub fn bad_request(message: String) -> HttpResponse {
     .json(value)
 }
 
+pub fn unauthorized(message: String) -> HttpResponse {
+  let value = BoomResponse {
+    status_code: 401,
+    error: Some("Unauthorized".to_string()),
+    message,
+  };
+  HttpResponse::Unauthorized()
+    .content_type("application/json")
+    .json(value)
+}
+
 pub fn not_found(message: String) -> HttpResponse {
+  error!("{}", message);
   let value = BoomResponse {
     status_code: 404,
     error: Some("Not Found".to_string()),
@@ -83,6 +96,7 @@ pub fn ok(message: String) -> HttpResponse {
 pub struct GetArtifactQuery {
   #[serde(rename = "teamId")]
   team_id: Option<String>,
+  team: Option<String>,
   slug: Option<String>,
 }
 
@@ -91,26 +105,30 @@ pub fn artifact_params_or_400(
   query: Query<GetArtifactQuery>,
 ) -> Result<(String, String), HttpResponse> {
   let id = path.into_inner();
-  let GetArtifactQuery { team_id, slug } = query.into_inner();
-
-  if team_id.is_none() && slug.is_none() {
-    return Err(bad_request(
-      "querystring should have required property 'teamId'".to_string(),
-    ));
-  }
-
-  let team_id = team_id.unwrap_or_else(|| slug.unwrap().to_string());
-
+  let GetArtifactQuery {
+    team_id,
+    slug,
+    team,
+  } = query.into_inner();
+  let team_id = team_id.or(team).or(slug);
+  let team_id = match team_id {
+    Some(team_id) => team_id,
+    None => {
+      return Err(bad_request(
+        "team is required in query parameters".to_string(),
+      ));
+    }
+  };
   Ok((id, team_id))
 }
 
-pub fn get_artifact_path(artifact_id: String, team_id: String) -> String {
+pub fn get_artifact_path(artifact_id: &String, team_id: &String) -> String {
   format!("{}/{}", team_id, artifact_id)
 }
 
 pub async fn exists_cached_artifact(
-  artifact_id: String,
-  team_id: String,
+  artifact_id: &String,
+  team_id: &String,
   storage: &Data<StorageStore>,
 ) -> Result<bool, String> {
   let artifact_path = get_artifact_path(artifact_id, team_id);

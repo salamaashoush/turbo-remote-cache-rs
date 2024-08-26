@@ -1,13 +1,22 @@
-use std::future::{ready, Ready};
+use std::{
+  future::{ready, Ready},
+  sync::Arc,
+};
 
 use actix_web::{
   body::EitherBody,
-  dev::{self, Service, ServiceRequest, ServiceResponse, Transform},
+  dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
+  web::Data,
   Error,
 };
 use futures_util::future::LocalBoxFuture;
 
-use crate::{config::get_turbo_tokens, helpers::bad_request};
+use crate::{
+  config::Config,
+  helpers::{bad_request, unauthorized},
+};
+
+type AppConfigData = Data<Arc<Config>>;
 
 pub struct Auth;
 
@@ -41,15 +50,29 @@ where
   type Error = Error;
   type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
-  dev::forward_ready!(service);
+  forward_ready!(service);
 
   fn call(&self, request: ServiceRequest) -> Self::Future {
-    let turbo_tokens = get_turbo_tokens();
+    let turbo_tokens = request
+      .app_data::<AppConfigData>()
+      .map(|data| data.turbo_tokens.clone());
+
+    let turbo_tokens = match turbo_tokens {
+      Some(tokens) => tokens,
+      None => {
+        let (req, _pl) = request.into_parts();
+        let response =
+          bad_request("Missing TURBO_TOKENS in the environment".to_string()).map_into_right_body();
+        return Box::pin(async { Ok(ServiceResponse::new(req, response)) });
+      }
+    };
+
     let auth_header = request.headers().get("Authorization");
     let auth_header_value = match auth_header {
       None => {
         let (req, _pl) = request.into_parts();
-        let response = bad_request("Missing Turbo Token".to_string()).map_into_right_body();
+        let response =
+          unauthorized("Missing Authorization header".to_string()).map_into_right_body();
         return Box::pin(async { Ok(ServiceResponse::new(req, response)) });
       }
       Some(v) => v.to_str().unwrap().split("Bearer ").collect::<Vec<&str>>()[1],
@@ -57,7 +80,7 @@ where
 
     if !turbo_tokens.contains(&auth_header_value.to_string()) {
       let (req, _pl) = request.into_parts();
-      let response = bad_request("Invalid Turbo Token".to_string()).map_into_right_body();
+      let response = unauthorized("Invalid Turbo Token".to_string()).map_into_right_body();
       return Box::pin(async { Ok(ServiceResponse::new(req, response)) });
     }
 
