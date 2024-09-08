@@ -144,6 +144,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           merge-multiple: true
+          pattern: binaries-*
       # windows binaries are zipped
       - name: Unzip
         uses: montudor/action-zip@v1
