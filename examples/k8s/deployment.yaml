@@ -17,7 +17,7 @@ spec:
       containers:
       - name: remote-cache
         image: salamaashoush/turbo-remote-cache-rs
-        command: ["turbo-remote-cache"]
+        command: ["turbo-remote-cache-rs"]
         resources:
           limits:
             memory: 2Gi

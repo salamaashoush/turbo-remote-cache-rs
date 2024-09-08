@@ -57,7 +57,7 @@ ENV FS_PATH=/tmp
 ENV BUCKET_NAME=cache
 ENV TURBO_TOKENS="token1,token2,token3"
 EXPOSE 4000
-CMD ["turbo-remote-cache"]
+CMD ["turbo-remote-cache-rs"]
 ```
 
 2. Build the image.
