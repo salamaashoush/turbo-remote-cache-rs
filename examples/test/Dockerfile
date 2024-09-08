@@ -1,5 +1,5 @@
 
-FROM ducktors/turborepo-remote-cache
+FROM ducktors/turborepo-remote-cache:2.2.1
 ENV NODE_ENV=production
 ENV STORAGE_PROVIDER=local
 ENV PORT=4000
