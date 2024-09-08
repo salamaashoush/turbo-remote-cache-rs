@@ -1,5 +1,11 @@
 # turbo-remote-cache-rs
 
+## 0.3.4
+
+### Patch Changes
+
+- b0500ca: Revert to one docker build runner
+
 ## 0.3.3
 
 ### Patch Changes
