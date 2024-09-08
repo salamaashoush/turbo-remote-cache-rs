@@ -25,7 +25,11 @@ async fn main() -> std::io::Result<()> {
   env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
   let config = Arc::new(Config::from_env().expect("error loading config from environment"));
   let port = get_port();
-  info!("starting HTTP server at http://localhost:{}", port);
+  info!(
+    "Using {} storage provider with bucket {} at {}",
+    config.storage_provider, config.bucket_name, config.fs_cache_path
+  );
+  info!("Starting HTTP server at http://localhost:{}", port);
   // Create and Start the HTTP server
   HttpServer::new(move || {
     App::new()
