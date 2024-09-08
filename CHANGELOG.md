@@ -1,5 +1,11 @@
 # turbo-remote-cache-rs
 
+## 0.3.1
+
+### Patch Changes
+
+- 9155de2: Update deps and log storage provider info on start
+
 ## 0.3.0
 
 ### Minor Changes
