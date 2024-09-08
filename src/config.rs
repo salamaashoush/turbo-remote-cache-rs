@@ -1,4 +1,4 @@
-use std::env::VarError;
+use std::{env::VarError, fmt::Display};
 
 #[derive(Debug, Clone, Default)]
 pub enum StorageProvider {
@@ -19,6 +19,18 @@ impl From<&str> for StorageProvider {
       "azure" => StorageProvider::Azure,
       "memory" => StorageProvider::Memory,
       _ => panic!("Invalid storage provider"),
+    }
+  }
+}
+
+impl Display for StorageProvider {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      StorageProvider::S3 => write!(f, "S3"),
+      StorageProvider::File => write!(f, "File"),
+      StorageProvider::Gcs => write!(f, "GCS"),
+      StorageProvider::Azure => write!(f, "Azure"),
+      StorageProvider::Memory => write!(f, "Memory"),
     }
   }
 }
