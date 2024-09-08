@@ -1,5 +1,11 @@
 # turbo-remote-cache-rs
 
+## 0.3.2
+
+### Patch Changes
+
+- 0d3194a: Fix docker images
+
 ## 0.3.1
 
 ### Patch Changes
