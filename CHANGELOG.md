@@ -1,5 +1,11 @@
 # turbo-remote-cache-rs
 
+## 0.3.3
+
+### Patch Changes
+
+- 2792801: Fix docker image tag
+
 ## 0.3.2
 
 ### Patch Changes
