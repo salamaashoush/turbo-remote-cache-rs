@@ -1,13 +1,15 @@
 use actix_cors::Cors;
 use actix_web::{
-  middleware::Logger,
-  web::{Data, PayloadConfig},
   App, HttpServer,
+  middleware::Compress,
+  web::{Data, PayloadConfig},
 };
-use log::info;
 use std::{env::args, path::Path, sync::Arc};
+use tracing::info;
+use tracing_actix_web::TracingLogger;
+use tracing_subscriber::EnvFilter;
 
-use crate::config::{get_port, Config};
+use crate::config::{Config, get_port};
 use crate::handlers::{artifacts, turborepo};
 
 pub mod auth;
@@ -21,8 +23,10 @@ async fn main() -> std::io::Result<()> {
   // Load the environment variables from the .env file
   let env_file = args().nth(1).unwrap_or(".env".to_string());
   dotenvy::from_path(Path::new(&env_file)).ok();
-  // Initialize the logger
-  env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
+  // Initialize tracing subscriber
+  tracing_subscriber::fmt()
+    .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+    .init();
   let config = Arc::new(Config::from_env().expect("error loading config from environment"));
   let port = get_port();
   info!(
@@ -33,7 +37,8 @@ async fn main() -> std::io::Result<()> {
   // Create and Start the HTTP server
   HttpServer::new(move || {
     App::new()
-      .wrap(Logger::default())
+      .wrap(TracingLogger::default())
+      .wrap(Compress::default())
       .wrap(
         Cors::default()
           .allow_any_header()

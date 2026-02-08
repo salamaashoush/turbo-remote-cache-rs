@@ -1,4 +1,5 @@
-use std::{env::VarError, fmt::Display};
+use std::{collections::HashSet, env::VarError, fmt::Display};
+use tracing::warn;
 
 #[derive(Debug, Clone, Default)]
 pub enum StorageProvider {
@@ -18,7 +19,13 @@ impl From<&str> for StorageProvider {
       "gcs" => StorageProvider::Gcs,
       "azure" => StorageProvider::Azure,
       "memory" => StorageProvider::Memory,
-      _ => panic!("Invalid storage provider"),
+      other => {
+        warn!(
+          "Unknown storage provider '{}', falling back to Memory",
+          other
+        );
+        StorageProvider::Memory
+      }
     }
   }
 }
@@ -37,7 +44,7 @@ impl Display for StorageProvider {
 
 #[derive(Debug, Clone)]
 pub struct Config {
-  pub turbo_tokens: Vec<String>,
+  pub turbo_tokens: HashSet<String>,
   pub storage_provider: StorageProvider,
   pub fs_cache_path: String,
   pub bucket_name: String,
@@ -46,7 +53,7 @@ pub struct Config {
 impl Default for Config {
   fn default() -> Self {
     Config {
-      turbo_tokens: vec![],
+      turbo_tokens: HashSet::new(),
       storage_provider: StorageProvider::Memory,
       fs_cache_path: std::env::temp_dir()
         .to_str()
@@ -68,7 +75,7 @@ impl Config {
   }
 
   pub fn with_turbo_tokens(mut self, turbo_tokens: Vec<String>) -> Self {
-    self.turbo_tokens = turbo_tokens;
+    self.turbo_tokens = turbo_tokens.into_iter().collect();
     self
   }
 
@@ -108,9 +115,12 @@ pub fn get_port() -> u16 {
     .expect("PORT must be a number")
 }
 
-pub fn get_turbo_tokens() -> Vec<String> {
+pub fn get_turbo_tokens() -> HashSet<String> {
   let tokens_str = std::env::var("TURBO_TOKENS").expect("TURBO_TOKENS is not set.");
-  tokens_str.split(',').map(|s| s.to_string()).collect()
+  tokens_str
+    .split(',')
+    .map(|s| s.trim().to_string())
+    .collect()
 }
 
 pub fn get_storage_provider() -> StorageProvider {

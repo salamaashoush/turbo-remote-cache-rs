@@ -1,13 +1,13 @@
 use std::{
-  future::{ready, Ready},
+  future::{Ready, ready},
   sync::Arc,
 };
 
 use actix_web::{
-  body::EitherBody,
-  dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
-  web::Data,
   Error,
+  body::EitherBody,
+  dev::{Service, ServiceRequest, ServiceResponse, Transform, forward_ready},
+  web::Data,
 };
 use futures_util::future::LocalBoxFuture;
 
@@ -68,17 +68,36 @@ where
     };
 
     let auth_header = request.headers().get("Authorization");
-    let auth_header_value = match auth_header {
+    let token = match auth_header {
       None => {
         let (req, _pl) = request.into_parts();
         let response =
           unauthorized("Missing Authorization header".to_string()).map_into_right_body();
         return Box::pin(async { Ok(ServiceResponse::new(req, response)) });
       }
-      Some(v) => v.to_str().unwrap().split("Bearer ").collect::<Vec<&str>>()[1],
+      Some(v) => {
+        let header_str = match v.to_str() {
+          Ok(s) => s,
+          Err(_) => {
+            let (req, _pl) = request.into_parts();
+            let response =
+              bad_request("Invalid Authorization header".to_string()).map_into_right_body();
+            return Box::pin(async { Ok(ServiceResponse::new(req, response)) });
+          }
+        };
+        match header_str.strip_prefix("Bearer ") {
+          Some(token) => token.to_string(),
+          None => {
+            let (req, _pl) = request.into_parts();
+            let response = bad_request("Authorization header must use Bearer scheme".to_string())
+              .map_into_right_body();
+            return Box::pin(async { Ok(ServiceResponse::new(req, response)) });
+          }
+        }
+      }
     };
 
-    if !turbo_tokens.contains(&auth_header_value.to_string()) {
+    if !turbo_tokens.contains(&token) {
       let (req, _pl) = request.into_parts();
       let response = unauthorized("Invalid Turbo Token".to_string()).map_into_right_body();
       return Box::pin(async { Ok(ServiceResponse::new(req, response)) });

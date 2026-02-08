@@ -1,6 +1,6 @@
 use actix_web::{
-  web::{get, scope, Query, ServiceConfig},
   HttpResponse, Responder,
+  web::{Query, ServiceConfig, get, scope},
 };
 use serde::{Deserialize, Serialize};
 

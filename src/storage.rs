@@ -1,12 +1,14 @@
 use crate::config::{Config, StorageProvider};
 use actix_web::web::Bytes;
-use log::debug;
+use futures_util::StreamExt;
+use futures_util::stream::BoxStream;
 use object_store::PutPayload;
 use object_store::{
-  aws::AmazonS3Builder, azure::MicrosoftAzureBuilder, gcp::GoogleCloudStorageBuilder,
-  local::LocalFileSystem, memory::InMemory, path::Path, Error, ObjectStore,
+  Error, ObjectStore, aws::AmazonS3Builder, azure::MicrosoftAzureBuilder,
+  gcp::GoogleCloudStorageBuilder, local::LocalFileSystem, memory::InMemory, path::Path,
 };
 use std::{fs::create_dir_all, sync::Arc};
+use tracing::debug;
 
 pub struct StorageStore {
   object_store: Arc<dyn ObjectStore>,
@@ -16,7 +18,7 @@ fn get_gcs_store(bucket_name: &str) -> Result<Arc<dyn ObjectStore>, String> {
   let gcs = GoogleCloudStorageBuilder::from_env()
     .with_bucket_name(bucket_name)
     .build()
-    .expect("error creating gcs");
+    .map_err(|e| format!("error creating gcs: {e}"))?;
   Ok(Arc::new(gcs))
 }
 
@@ -24,8 +26,7 @@ fn get_azure_store(bucket_name: &str) -> Result<Arc<dyn ObjectStore>, String> {
   let azure = MicrosoftAzureBuilder::from_env()
     .with_container_name(bucket_name)
     .build()
-    .expect("error creating azure");
-
+    .map_err(|e| format!("error creating azure: {e}"))?;
   Ok(Arc::new(azure))
 }
 
@@ -33,16 +34,15 @@ fn get_s3_store(bucket_name: &str) -> Result<Arc<dyn ObjectStore>, String> {
   let s3 = AmazonS3Builder::from_env()
     .with_bucket_name(bucket_name)
     .build()
-    .expect("error creating s3");
-
+    .map_err(|e| format!("error creating s3: {e}"))?;
   Ok(Arc::new(s3))
 }
 
 fn get_file_store(bucket_name: &str, fs_cache_path: &str) -> Result<Arc<dyn ObjectStore>, String> {
   let cache_path = format!("{}/{}", fs_cache_path, bucket_name);
-  // create the folder if it doesn't exist
-  create_dir_all(&cache_path).expect("error creating cache folder");
-  let local = LocalFileSystem::new_with_prefix(cache_path).expect("error creating local");
+  create_dir_all(&cache_path).map_err(|e| format!("error creating cache folder: {e}"))?;
+  let local = LocalFileSystem::new_with_prefix(cache_path)
+    .map_err(|e| format!("error creating local store: {e}"))?;
   Ok(Arc::new(local))
 }
 
@@ -68,7 +68,6 @@ impl Default for StorageStore {
 }
 impl StorageStore {
   pub fn new(config: &Config) -> Self {
-    // create an ObjectStore
     let object_store: Arc<dyn ObjectStore> = match get_object_store(config) {
       Ok(store) => store,
       Err(e) => panic!("{}", e),
@@ -80,23 +79,54 @@ impl StorageStore {
 
   pub async fn put(&self, path: &str, data: Bytes) -> Result<(), Error> {
     let payload = PutPayload::from(data);
-    match self.object_store.put(&Path::from(path), payload).await {
-      Ok(_) => Ok(()),
-      Err(e) => Err(e),
-    }
+    self.object_store.put(&Path::from(path), payload).await?;
+    Ok(())
   }
 
   pub async fn get(&self, path: &str) -> Result<Bytes, Error> {
     self
       .object_store
       .get(&Path::from(path))
-      .await
-      .expect("Failed to get artifact.")
+      .await?
       .bytes()
       .await
   }
 
+  pub fn get_stream(&self, path: &str) -> BoxStream<'static, Result<Bytes, Error>> {
+    let store = self.object_store.clone();
+    let path = Path::from(path);
+    Box::pin(
+      futures_util::stream::once(async move { store.get(&path).await }).flat_map(|result| {
+        match result {
+          Ok(get_result) => get_result.into_stream(),
+          Err(e) => Box::pin(futures_util::stream::once(async move { Err(e) })),
+        }
+      }),
+    )
+  }
+
   pub async fn exists(&self, path: &str) -> bool {
     self.object_store.head(&Path::from(path)).await.is_ok()
+  }
+
+  pub async fn put_tag(&self, path: &str, tag: &str) -> Result<(), Error> {
+    let tag_path = format!("{}.tag", path);
+    let payload = PutPayload::from(Bytes::from(tag.to_string()));
+    self
+      .object_store
+      .put(&Path::from(tag_path), payload)
+      .await?;
+    Ok(())
+  }
+
+  pub async fn get_tag(&self, path: &str) -> Option<String> {
+    let tag_path = format!("{}.tag", path);
+    match self.object_store.get(&Path::from(tag_path)).await {
+      Ok(result) => match result.bytes().await {
+        Ok(bytes) => String::from_utf8(bytes.to_vec()).ok(),
+        Err(_) => None,
+      },
+      Err(_) => None,
+    }
   }
 }

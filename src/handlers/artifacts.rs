@@ -2,16 +2,17 @@ use crate::{
   auth::Auth,
   config::Config,
   helpers::{
-    artifact_params_or_400, exists_cached_artifact, get_artifact_path, not_found, GetArtifactQuery,
+    GetArtifactQuery, artifact_params_or_400, exists_cached_artifact, get_artifact_path,
+    internal_server_error, not_found,
   },
   storage::StorageStore,
 };
 use actix_web::{
-  web::{get, head, post, put, resource, scope, Bytes, Data, Path, Query, ServiceConfig},
-  HttpResponse, Responder,
+  HttpRequest, HttpResponse, Responder,
+  web::{Bytes, Data, Path, Query, ServiceConfig, get, head, post, put, resource, scope},
 };
-use log::info;
 use serde::Serialize;
+use tracing::info;
 
 #[derive(Serialize)]
 pub struct Status {
@@ -66,7 +67,7 @@ async fn get_artifact(
   path: Path<String>,
   query: Query<GetArtifactQuery>,
   storage: Data<StorageStore>,
-) -> impl Responder {
+) -> HttpResponse {
   let (id, team_id) = match artifact_params_or_400(path, query) {
     Ok((id, team_id)) => (id, team_id),
     Err(e) => return e,
@@ -75,38 +76,55 @@ async fn get_artifact(
     .await
     .is_ok()
   {
-    let path: String = get_artifact_path(&id, &team_id);
-    let data = storage.get(&path).await.unwrap();
-    info!("Artifact {} retrieved from {}", id, path);
-    HttpResponse::Ok()
-      .content_type("application/octet-stream")
-      .body(data)
+    let artifact_path = get_artifact_path(&id, &team_id);
+    let stream = storage.get_stream(&artifact_path);
+
+    let mut response = HttpResponse::Ok();
+    response.content_type("application/octet-stream");
+
+    if let Some(tag) = storage.get_tag(&artifact_path).await {
+      response.insert_header(("x-artifact-tag", tag));
+    }
+
+    info!("Artifact {} retrieved from {}", id, artifact_path);
+    response.streaming(stream)
   } else {
     not_found("Artifact not found".to_string())
   }
 }
 
 async fn put_artifact(
+  req: HttpRequest,
   path: Path<String>,
   query: Query<GetArtifactQuery>,
   body: Bytes,
   storage: Data<StorageStore>,
-) -> impl Responder {
+) -> HttpResponse {
   let (id, team_id) = match artifact_params_or_400(path, query) {
     Ok((id, team_id)) => (id, team_id),
     Err(e) => return e,
   };
-  // store artifact
-  let path = get_artifact_path(&id, &team_id);
-  let _ = storage.put(&path, body).await;
-  info!("Artifact {} stored in {}", id, path);
+  let artifact_path = get_artifact_path(&id, &team_id);
+  if let Err(e) = storage.put(&artifact_path, body).await {
+    return internal_server_error(format!("Failed to store artifact: {e}"));
+  }
+
+  if let Some(tag_value) = req.headers().get("x-artifact-tag")
+    && let Ok(tag_str) = tag_value.to_str()
+  {
+    let _ = storage.put_tag(&artifact_path, tag_str).await;
+  }
+
+  info!("Artifact {} stored in {}", id, artifact_path);
   HttpResponse::Ok()
     .content_type("application/json")
-    .json(PutArtifactResponse { urls: vec![path] })
+    .json(PutArtifactResponse {
+      urls: vec![artifact_path],
+    })
 }
 
 pub fn configure(config: &Config) -> impl FnOnce(&mut ServiceConfig) + '_ {
-  let c = |cfg: &mut ServiceConfig| {
+  |cfg: &mut ServiceConfig| {
     cfg.service(
       scope("/v8/artifacts")
         .route("/status", get().to(get_status))
@@ -123,8 +141,7 @@ pub fn configure(config: &Config) -> impl FnOnce(&mut ServiceConfig) + '_ {
             ),
         ),
     );
-  };
-  c
+  }
 }
 
 #[cfg(test)]
@@ -135,8 +152,9 @@ mod artifacts_tests {
   use super::*;
   use crate::config::{Config, StorageProvider};
   use actix_web::{
-    http::{header::ContentType, Method},
-    test, App,
+    App,
+    http::{Method, header::ContentType},
+    test,
   };
 
   #[actix_web::test]
@@ -343,5 +361,49 @@ mod artifacts_tests {
     assert_eq!(get_resp.status(), 200);
     let body = test::read_body(get_resp).await;
     assert_eq!(str::from_utf8(&body).unwrap(), "test");
+  }
+
+  #[actix_web::test]
+  async fn test_artifacts_with_tag() {
+    let config = Arc::new(Config::default().with_turbo_tokens(vec!["test".to_string()]));
+    let app = test::init_service(
+      App::new()
+        .app_data(Data::new(config.clone()))
+        .configure(configure(&config)),
+    )
+    .await;
+
+    // PUT artifact with x-artifact-tag header
+    let put_req = test::TestRequest::default()
+      .method(Method::PUT)
+      .uri("/v8/artifacts/tag123?teamId=test")
+      .set_payload(Bytes::from_static(b"tagged-content"))
+      .insert_header(ContentType::json())
+      .insert_header(("Authorization", "Bearer test"))
+      .insert_header(("x-artifact-tag", "abc123def"))
+      .to_request();
+    let put_resp = test::call_service(&app, put_req).await;
+    assert_eq!(put_resp.status(), 200);
+
+    // GET artifact and verify x-artifact-tag is returned
+    let get_req = test::TestRequest::default()
+      .method(Method::GET)
+      .uri("/v8/artifacts/tag123?teamId=test")
+      .insert_header(ContentType::json())
+      .insert_header(("Authorization", "Bearer test"))
+      .to_request();
+    let get_resp = test::call_service(&app, get_req).await;
+    assert_eq!(get_resp.status(), 200);
+
+    let tag_header = get_resp
+      .headers()
+      .get("x-artifact-tag")
+      .expect("x-artifact-tag header missing")
+      .to_str()
+      .unwrap();
+    assert_eq!(tag_header, "abc123def");
+
+    let body = test::read_body(get_resp).await;
+    assert_eq!(str::from_utf8(&body).unwrap(), "tagged-content");
   }
 }

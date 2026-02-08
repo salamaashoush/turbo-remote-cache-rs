@@ -1,9 +1,9 @@
 use actix_web::{
-  web::{Data, Path, Query},
   HttpResponse,
+  web::{Data, Path, Query},
 };
-use log::error;
 use serde::{Deserialize, Serialize};
+use tracing::error;
 
 use crate::storage::StorageStore;
 
@@ -122,13 +122,13 @@ pub fn artifact_params_or_400(
   Ok((id, team_id))
 }
 
-pub fn get_artifact_path(artifact_id: &String, team_id: &String) -> String {
+pub fn get_artifact_path(artifact_id: &str, team_id: &str) -> String {
   format!("{}/{}", team_id, artifact_id)
 }
 
 pub async fn exists_cached_artifact(
-  artifact_id: &String,
-  team_id: &String,
+  artifact_id: &str,
+  team_id: &str,
   storage: &Data<StorageStore>,
 ) -> Result<bool, String> {
   let artifact_path = get_artifact_path(artifact_id, team_id);
