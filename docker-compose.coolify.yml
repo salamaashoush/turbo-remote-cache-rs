@@ -1,0 +1,58 @@
+# documentation: https://github.com/salamaashoush/turbo-remote-cache-rs
+# slogan: Self-hosted Turborepo remote cache server with multi-tenant platform
+# tags: turborepo, cache, ci-cd, rust, remote-cache
+# port: 4000
+
+services:
+  turbo-cache:
+    build: .
+    environment:
+      - DATABASE_URL=postgresql://${SERVICE_USER_POSTGRES}:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/${POSTGRES_DB:-turbo_cache}
+      - JWT_SECRET=${SERVICE_BASE64_64_JWT}
+      - STORAGE_PROVIDER=${STORAGE_PROVIDER:-file}
+      - FS_PATH=/data/cache
+      - LEGACY_TOKENS_ENABLED=${LEGACY_TOKENS_ENABLED:-true}
+      - TURBO_TOKENS=${TURBO_TOKENS:-}
+      - APP_URL=${SERVICE_FQDN_TURBOCACHE_4000}
+      - ALLOWED_ORIGINS=${SERVICE_FQDN_TURBOCACHE_4000}
+      - SUPER_ADMIN_EMAIL=${SUPER_ADMIN_EMAIL:?admin@example.com}
+      - SUPER_ADMIN_PASSWORD=${SERVICE_PASSWORD_ADMIN}
+      - ALLOW_REGISTRATION=${ALLOW_REGISTRATION:-true}
+      - REQUIRE_EMAIL_VERIFICATION=${REQUIRE_EMAIL_VERIFICATION:-false}
+      - DB_MAX_CONNECTIONS=${DB_MAX_CONNECTIONS:-10}
+      - DB_MIN_CONNECTIONS=${DB_MIN_CONNECTIONS:-2}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_TLS=${SMTP_TLS:-starttls}
+      - SMTP_FROM=${SMTP_FROM:-noreply@turbo-cache.local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - turbo-cache-data:/data/cache
+    healthcheck:
+      test: curl -f http://localhost:4000/health || exit 1
+      interval: 30s
+      timeout: 3s
+      start_period: 10s
+      retries: 3
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-turbo_cache}
+      - POSTGRES_USER=${SERVICE_USER_POSTGRES}
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+    volumes:
+      - turbo-cache-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready -U $$SERVICE_USER_POSTGRES
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  turbo-cache-data:
+  turbo-cache-pgdata:

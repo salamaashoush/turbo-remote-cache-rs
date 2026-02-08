@@ -1,0 +1,11 @@
+{
+  "$schema": "https://cdn.coollabs.io/coolify/coolify.schema.json",
+  "name": "turbo-remote-cache-rs",
+  "build": {
+    "build_pack": "dockerfile",
+    "base_directory": "/"
+  },
+  "network": {
+    "expose": "4000"
+  }
+}
