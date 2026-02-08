@@ -1,12 +1,12 @@
 {
   "name": "turbo-remote-cache-rs",
   "version": "0.3.4",
+  "private": true,
   "repository": {
     "type": "git",
     "url": "https://github.com/salamaashoush/turbo-remote-cache-rs"
   },
   "author": "Salama Ashoush <salamaaashoush@gmail.com>",
-  "packageManager": "pnpm@9.9.0",
   "license": "MIT",
   "description": "A remote cache for turbo",
   "keywords": [
@@ -20,29 +20,29 @@
   "homepage": "https://github.com/salamaashoush/turbo-remote-cache-rs",
   "bugs": "https://github.com/salamaashoush/turbo-remote-cache-rs/issues",
   "bin": "bin/turbo-remote-cache-rs",
-  "engines": {
-    "node": ">=22.*"
-  },
   "files": [
     "bin/turbo-remote-cache-rs",
     "README.md"
   ],
+  "workspaces": [
+    "frontend"
+  ],
   "scripts": {
-    "version:prepare": "changeset version && tsx ./scripts/prepare-version.mts",
-    "generate-packages": "node ./scripts/generate-packages.mjs"
+    "version:prepare": "changeset version && bun run ./scripts/prepare-version.mts",
+    "generate-packages": "bun run ./scripts/generate-packages.mjs"
   },
   "devDependencies": {
     "@changesets/changelog-github": "0.5.0",
     "@changesets/cli": "2.27.8",
-    "@types/node": "^22.5.4",
+    "@types/node": "^25.2.2",
     "@types/shell-escape": "^0.2.3",
-    "chalk": "^5.3.0",
+    "chalk": "^5.6.2",
     "cmd-ts": "0.13.0",
     "execa": "9.3.1",
     "prettier": "3.3.3",
     "pv": "1.0.1",
     "shell-escape": "^0.2.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.5.4"
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }
