@@ -4,6 +4,7 @@ use actix_web::{
 };
 use serde::{Deserialize, Serialize};
 use tracing::error;
+use uuid::Uuid;
 
 use crate::storage::StorageStore;
 
@@ -122,8 +123,15 @@ pub fn artifact_params_or_400(
   Ok((id, team_id))
 }
 
+/// Build the storage path for an artifact.
+/// - With org_id (API token auth): `{org_id}/{team_id}/{artifact_id}`
+/// - Without org_id (legacy auth): `{team_id}/{artifact_id}`
 pub fn get_artifact_path(artifact_id: &str, team_id: &str) -> String {
   format!("{}/{}", team_id, artifact_id)
+}
+
+pub fn get_artifact_path_with_org(org_id: &Uuid, team_id: &str, artifact_id: &str) -> String {
+  format!("{}/{}/{}", org_id, team_id, artifact_id)
 }
 
 pub async fn exists_cached_artifact(
@@ -132,6 +140,19 @@ pub async fn exists_cached_artifact(
   storage: &Data<StorageStore>,
 ) -> Result<bool, String> {
   let artifact_path = get_artifact_path(artifact_id, team_id);
+  if !storage.exists(&artifact_path).await {
+    return Err(format!("Artifact {} doesn't exist.", artifact_path));
+  }
+  Ok(true)
+}
+
+pub async fn exists_cached_artifact_with_org(
+  org_id: &Uuid,
+  artifact_id: &str,
+  team_id: &str,
+  storage: &Data<StorageStore>,
+) -> Result<bool, String> {
+  let artifact_path = get_artifact_path_with_org(org_id, team_id, artifact_id);
   if !storage.exists(&artifact_path).await {
     return Err(format!("Artifact {} doesn't exist.", artifact_path));
   }

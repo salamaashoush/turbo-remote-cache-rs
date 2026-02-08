@@ -4,7 +4,7 @@ use futures_util::StreamExt;
 use futures_util::stream::BoxStream;
 use object_store::PutPayload;
 use object_store::{
-  Error, ObjectStore, aws::AmazonS3Builder, azure::MicrosoftAzureBuilder,
+  Error, ObjectStore, ObjectStoreExt, aws::AmazonS3Builder, azure::MicrosoftAzureBuilder,
   gcp::GoogleCloudStorageBuilder, local::LocalFileSystem, memory::InMemory, path::Path,
 };
 use std::{fs::create_dir_all, sync::Arc};
@@ -63,18 +63,14 @@ fn get_object_store(config: &Config) -> Result<Arc<dyn ObjectStore>, String> {
 
 impl Default for StorageStore {
   fn default() -> Self {
-    Self::new(&Config::default())
+    Self::new(&Config::default()).expect("Failed to create default StorageStore")
   }
 }
 impl StorageStore {
-  pub fn new(config: &Config) -> Self {
-    let object_store: Arc<dyn ObjectStore> = match get_object_store(config) {
-      Ok(store) => store,
-      Err(e) => panic!("{}", e),
-    };
-
+  pub fn new(config: &Config) -> Result<Self, String> {
+    let object_store = get_object_store(config)?;
     debug!("Using storage provider: {:?}", object_store);
-    StorageStore { object_store }
+    Ok(StorageStore { object_store })
   }
 
   pub async fn put(&self, path: &str, data: Bytes) -> Result<(), Error> {
@@ -128,5 +124,53 @@ impl StorageStore {
       },
       Err(_) => None,
     }
+  }
+
+  pub async fn put_duration(&self, path: &str, duration_ms: i32) -> Result<(), Error> {
+    let dur_path = format!("{}.duration", path);
+    let payload = PutPayload::from(Bytes::from(duration_ms.to_string()));
+    self
+      .object_store
+      .put(&Path::from(dur_path), payload)
+      .await?;
+    Ok(())
+  }
+
+  pub async fn get_duration(&self, path: &str) -> Option<i32> {
+    let dur_path = format!("{}.duration", path);
+    match self.object_store.get(&Path::from(dur_path)).await {
+      Ok(result) => match result.bytes().await {
+        Ok(bytes) => String::from_utf8(bytes.to_vec())
+          .ok()
+          .and_then(|s| s.parse().ok()),
+        Err(_) => None,
+      },
+      Err(_) => None,
+    }
+  }
+
+  pub async fn delete(&self, path: &str) -> Result<(), Error> {
+    self.object_store.delete(&Path::from(path)).await?;
+    // Also try to delete the tag and duration sidecars
+    let tag_path = format!("{}.tag", path);
+    let dur_path = format!("{}.duration", path);
+    let _ = self.object_store.delete(&Path::from(tag_path)).await;
+    let _ = self.object_store.delete(&Path::from(dur_path)).await;
+    Ok(())
+  }
+
+  pub async fn delete_prefix(&self, prefix: &str) -> Result<u64, Error> {
+    let prefix_path = Path::from(prefix);
+    let mut count = 0u64;
+
+    let mut list_stream = self.object_store.list(Some(&prefix_path));
+    while let Some(meta) = list_stream.next().await {
+      if let Ok(meta) = meta {
+        let _ = self.object_store.delete(&meta.location).await;
+        count += 1;
+      }
+    }
+
+    Ok(count)
   }
 }
