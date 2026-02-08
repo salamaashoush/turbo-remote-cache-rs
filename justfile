@@ -1,91 +1,130 @@
 #!/usr/bin/env -S just --justfile
 
+set dotenv-load
+
+export DATABASE_URL := env("DATABASE_URL", "postgres://turbo:turbo_dev_password@localhost:5432/turbo_cache")
+export JWT_SECRET := env("JWT_SECRET", "dev-secret-do-not-use-in-production")
+export SQLX_OFFLINE := "true"
+
 _default:
   @just --list -u
 
-alias r := ready
+# --- Setup ---
 
-# Make sure you have cargo-binstall installed.
-# You can download the pre-compiled binary from <https://github.com/cargo-bins/cargo-binstall#installation>
-# or install via `cargo install cargo-binstall`
-# Initialize the project by installing all the necessary tools.
+# Install dev tooling (cargo-watch, typos, etc.)
 init:
-  cargo binstall cargo-watch cargo-insta typos-cli taplo-cli wasm-pack cargo-llvm-cov cargo-shear -y
+  cargo binstall cargo-watch typos-cli -y
+  bun install
 
-# When ready, run the same CI commands
-ready:
-  git diff --exit-code --quiet
-  typos
-  just fmt
-  just check
-  just test
-  just lint
-  just doc
-  just ast
-  cargo shear
-  git status
+# --- Dev ---
 
+# Start PostgreSQL via docker compose
+db:
+  docker compose up -d db
 
-install-hook:
-  echo "#!/bin/sh\njust fmt" > .git/hooks/pre-commit
-  chmod +x .git/hooks/pre-commit
+# Stop PostgreSQL
+db-down:
+  docker compose down
 
-# --no-vcs-ignores: cargo-watch has a bug loading all .gitignores, including the ones listed in .gitignore
-# use .ignore file getting the ignore list
-# Run `cargo watch`
-watch command:
-  cargo watch --no-vcs-ignores -i '*snap*' -x '{{command}}'
+# Run backend (auto-reload on changes)
+dev-be:
+  cargo watch -x run
 
-# Format all files
+# Run frontend dev server (Vite, port 5173, proxies /api + /v8 to :4000)
+dev-fe:
+  bun run --filter turbo-remote-cache-dashboard dev
+
+# Run both backend + frontend in parallel
+dev: db mailpit
+  just dev-be & just dev-fe & wait
+
+# Start MailPit dev email server (UI at http://localhost:8025)
+mailpit:
+  docker compose up -d mailpit
+
+# Build frontend for production
+build-fe:
+  bun run --filter turbo-remote-cache-dashboard build
+
+# Build backend in release mode
+build-be:
+  SQLX_OFFLINE=true cargo build --release
+
+# Build everything
+build: build-fe build-be
+
+# --- Quality ---
+
+# Format all code (Rust + frontend)
 fmt:
   cargo fmt
-  taplo format
+  bun run --filter turbo-remote-cache-dashboard format
 
-# Run cargo check
-check:
-  cargo ck
+# Check formatting without writing
+fmt-check:
+  cargo fmt -- --check
+  bun run --filter turbo-remote-cache-dashboard format:check
 
-# Run all the tests
+# Lint Rust (clippy)
+lint-be:
+  SQLX_OFFLINE=true cargo clippy -- -D warnings
+
+# Lint frontend (ESLint + typecheck)
+lint-fe:
+  bun run --filter turbo-remote-cache-dashboard lint
+  bun run --filter turbo-remote-cache-dashboard typecheck
+
+# Lint everything
+lint: lint-be lint-fe
+
+# Run Rust tests
 test:
-  cargo test
+  SQLX_OFFLINE=true cargo test
 
-# Lint the whole project
-lint:
-  cargo lint -- --deny warnings
+# Check for typos in the codebase
+typos:
+  typos
 
-doc:
-  RUSTDOCFLAGS='-D warnings' cargo doc --no-deps --document-private-items
+# Full CI-style check: format, lint, test, typos
+check: fmt-check lint test typos
 
+# Same as check but also auto-format first
+ready: fmt lint test typos
 
+# --- Docker ---
 
-# Get code coverage
-codecov:
-  cargo codecov --html
+# Build Docker image
+docker-build:
+  docker build -t turbo-remote-cache-rs .
 
-# Run the benchmarks. See `tasks/benchmark`
-benchmark:
-  cargo benchmark
+# Run full stack via docker compose
+docker-up:
+  docker compose up --build
 
-# Removed Unused Dependencies
-shear:
-  cargo shear --fix
+# --- Utilities ---
 
-# Automatically DRY up Cargo.toml manifests in a workspace.
-autoinherit:
-  cargo binstall cargo-autoinherit
-  cargo autoinherit
+# Watch and re-run tests on changes
+watch-test:
+  cargo watch -x test
 
-
-
-# Build in release build
-turbo:
-  cargo build --release -p turbo-remote-cache-rs --bin turbo-remote-cache-rs
-
-# # Generate the JavaScript global variables. See `tasks/javascript_globals`
-# javascript-globals:
-#   cargo run -p javascript_globals
+# Watch and re-run clippy on changes
+watch-lint:
+  cargo watch -x 'clippy -- -D warnings'
 
 # Upgrade all Rust dependencies
 upgrade:
   cargo upgrade --incompatible
 
+# --- Turbo CLI ---
+
+# Turbo CLI: login to local server
+turbo-login:
+  cd test-turbo-app && npx turbo login --api http://localhost:4000 --login http://localhost:4000
+
+# Turbo CLI: link repo to team
+turbo-link:
+  cd test-turbo-app && npx turbo link --api http://localhost:4000
+
+# Turbo CLI: test build with remote cache
+turbo-build:
+  cd test-turbo-app && npx turbo build --api http://localhost:4000

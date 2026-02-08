@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: turbo_cache
+      POSTGRES_USER: turbo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-turbo_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U turbo"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://turbo:${POSTGRES_PASSWORD:-turbo_dev_password}@db:5432/turbo_cache
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+      TURBO_TOKENS: ${TURBO_TOKENS:-legacy-dev-token}
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-file}
+      FS_PATH: /data/cache
+      LEGACY_TOKENS_ENABLED: "${LEGACY_TOKENS_ENABLED:-true}"
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_TLS: none
+      SMTP_FROM: ${SMTP_FROM:-noreply@turbo-cache.local}
+      APP_URL: ${APP_URL:-http://localhost:4000}
+      SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-admin@example.com}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD:-changeme123}
+    ports:
+      - "4000:4000"
+    volumes:
+      - cachedata:/data/cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+
+volumes:
+  pgdata:
+  cachedata:
