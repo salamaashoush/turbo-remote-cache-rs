@@ -1,6 +1,5 @@
 use crate::{
-  auth::Auth,
-  config::Config,
+  auth::{Auth, AuthInfo},
   helpers::{
     GetArtifactQuery, artifact_params_or_400, exists_cached_artifact, get_artifact_path,
     internal_server_error, not_found,
@@ -8,11 +7,55 @@ use crate::{
   storage::StorageStore,
 };
 use actix_web::{
-  HttpRequest, HttpResponse, Responder,
+  HttpMessage, HttpRequest, HttpResponse, Responder,
   web::{Bytes, Data, Path, Query, ServiceConfig, get, head, post, put, resource, scope},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tracing::info;
+
+#[derive(Deserialize)]
+struct TurboAnalyticsEvent {
+  #[allow(dead_code)]
+  source: Option<String>,
+  event: String,
+  hash: String,
+  duration: Option<i64>,
+  #[allow(dead_code)]
+  #[serde(rename = "sessionId")]
+  session_id: Option<String>,
+}
+
+/// Record a cache event in the background (fire-and-forget) for API token requests.
+fn maybe_record_event(
+  req: &HttpRequest,
+  artifact_hash: &str,
+  event_type: &str,
+  size_bytes: i64,
+  duration_ms: i32,
+) {
+  if let Some(AuthInfo::ApiToken {
+    org_id, team_id, ..
+  }) = req.extensions().get::<AuthInfo>().cloned()
+  {
+    let hash = artifact_hash.to_string();
+    let event = event_type.to_string();
+    if let Some(pool) = req.app_data::<Data<sqlx::PgPool>>() {
+      let pool = pool.get_ref().clone();
+      tokio::spawn(async move {
+        let _ = crate::db::cache_events::record_event(
+          &pool,
+          org_id,
+          team_id,
+          &hash,
+          &event,
+          size_bytes,
+          duration_ms,
+        )
+        .await;
+      });
+    }
+  }
+}
 
 #[derive(Serialize)]
 pub struct Status {
@@ -24,8 +67,39 @@ struct PutArtifactResponse {
   urls: Vec<String>,
 }
 
-async fn post_artifacts_events() -> impl Responder {
-  info!("Artifacts events received");
+/// Turbo CLI sends analytics events as a JSON array: [{source, event, hash, duration, sessionId}]
+async fn post_artifacts_events(req: HttpRequest, body: Bytes) -> impl Responder {
+  info!("Artifacts events received ({} bytes)", body.len());
+
+  // Parse and record events if we have org context (API token auth)
+  if let Some(AuthInfo::ApiToken {
+    org_id, team_id, ..
+  }) = req.extensions().get::<AuthInfo>().cloned()
+    && let Some(pool) = req.app_data::<Data<sqlx::PgPool>>()
+    && let Ok(events) = serde_json::from_slice::<Vec<TurboAnalyticsEvent>>(&body)
+  {
+    let pool = pool.get_ref().clone();
+    tokio::spawn(async move {
+      for event in events {
+        let event_type = match event.event.as_str() {
+          "HIT" | "hit" => "hit",
+          "MISS" | "miss" => "miss",
+          _ => continue,
+        };
+        let _ = crate::db::cache_events::record_event(
+          &pool,
+          org_id,
+          team_id,
+          &event.hash,
+          event_type,
+          0,
+          event.duration.unwrap_or(0) as i32,
+        )
+        .await;
+      }
+    });
+  }
+
   HttpResponse::Ok()
     .content_type("application/json")
     .body("{}")
@@ -42,6 +116,7 @@ async fn get_status() -> impl Responder {
 }
 
 async fn head_artifact(
+  req: HttpRequest,
   path: Path<String>,
   query: Query<GetArtifactQuery>,
   storage: Data<StorageStore>,
@@ -60,10 +135,12 @@ async fn head_artifact(
       .content_type("application/json")
       .body("true")
   } else {
+    maybe_record_event(&req, &id, "miss", 0, 0);
     not_found("Artifact not found".to_string())
   }
 }
 async fn get_artifact(
+  req: HttpRequest,
   path: Path<String>,
   query: Query<GetArtifactQuery>,
   storage: Data<StorageStore>,
@@ -86,9 +163,16 @@ async fn get_artifact(
       response.insert_header(("x-artifact-tag", tag));
     }
 
+    let duration_ms = storage.get_duration(&artifact_path).await.unwrap_or(0);
+    if duration_ms > 0 {
+      response.insert_header(("x-artifact-duration", duration_ms.to_string()));
+    }
+
+    maybe_record_event(&req, &id, "hit", 0, duration_ms);
     info!("Artifact {} retrieved from {}", id, artifact_path);
     response.streaming(stream)
   } else {
+    maybe_record_event(&req, &id, "miss", 0, 0);
     not_found("Artifact not found".to_string())
   }
 }
@@ -104,7 +188,26 @@ async fn put_artifact(
     Ok((id, team_id)) => (id, team_id),
     Err(e) => return e,
   };
+
+  // Check cache size limit for platform mode (API token auth)
+  let auth_info = req.extensions().get::<AuthInfo>().cloned();
+  if let Some(AuthInfo::ApiToken { org_id, .. }) = auth_info
+    && let Some(pool) = req.app_data::<Data<sqlx::PgPool>>()
+    && let Ok(Some(org)) = crate::db::organizations::find_by_id(pool.get_ref(), org_id).await
+    && let Some(limit) = org.cache_size_limit_bytes
+  {
+    let current = crate::db::cache_events::total_bytes_by_org(pool.get_ref(), org_id)
+      .await
+      .unwrap_or(0);
+    if current + body.len() as i64 > limit {
+      return HttpResponse::PayloadTooLarge().json(serde_json::json!({
+        "error": "Cache size limit exceeded"
+      }));
+    }
+  }
+
   let artifact_path = get_artifact_path(&id, &team_id);
+  let body_len = body.len();
   if let Err(e) = storage.put(&artifact_path, body).await {
     return internal_server_error(format!("Failed to store artifact: {e}"));
   }
@@ -115,6 +218,19 @@ async fn put_artifact(
     let _ = storage.put_tag(&artifact_path, tag_str).await;
   }
 
+  // Store x-artifact-duration as sidecar for time-saved analytics
+  let duration_ms = req
+    .headers()
+    .get("x-artifact-duration")
+    .and_then(|v| v.to_str().ok())
+    .and_then(|v| v.parse::<i32>().ok())
+    .unwrap_or(0);
+  if duration_ms > 0 {
+    let _ = storage.put_duration(&artifact_path, duration_ms).await;
+  }
+
+  let body_len = body_len as i64;
+  maybe_record_event(&req, &id, "put", body_len, duration_ms);
   info!("Artifact {} stored in {}", id, artifact_path);
   HttpResponse::Ok()
     .content_type("application/json")
@@ -123,25 +239,22 @@ async fn put_artifact(
     })
 }
 
-pub fn configure(config: &Config) -> impl FnOnce(&mut ServiceConfig) + '_ {
-  |cfg: &mut ServiceConfig| {
-    cfg.service(
-      scope("/v8/artifacts")
-        .route("/status", get().to(get_status))
-        .service(
-          scope("")
-            .wrap(Auth)
-            .route("/events", post().to(post_artifacts_events))
-            .service(
-              resource("/{id}")
-                .route(get().to(get_artifact))
-                .route(head().to(head_artifact))
-                .route(put().to(put_artifact))
-                .app_data(Data::new(StorageStore::new(config))),
-            ),
-        ),
-    );
-  }
+pub fn configure(cfg: &mut ServiceConfig) {
+  cfg.service(
+    scope("/v8/artifacts")
+      .route("/status", get().to(get_status))
+      .service(
+        scope("")
+          .wrap(Auth)
+          .route("/events", post().to(post_artifacts_events))
+          .service(
+            resource("/{id}")
+              .route(get().to(get_artifact))
+              .route(head().to(head_artifact))
+              .route(put().to(put_artifact)),
+          ),
+      ),
+  );
 }
 
 #[cfg(test)]
@@ -151,6 +264,7 @@ mod artifacts_tests {
 
   use super::*;
   use crate::config::{Config, StorageProvider};
+  use crate::storage::StorageStore;
   use actix_web::{
     App,
     http::{Method, header::ContentType},
@@ -160,10 +274,12 @@ mod artifacts_tests {
   #[actix_web::test]
   async fn test_get_status() {
     let config = Arc::new(Config::default());
+    let storage = StorageStore::new(&config).expect("storage");
     let app = test::init_service(
       App::new()
         .app_data(Data::new(config.clone()))
-        .configure(configure(&config)),
+        .app_data(Data::new(storage))
+        .configure(configure),
     )
     .await;
     let req = test::TestRequest::get()
@@ -179,10 +295,12 @@ mod artifacts_tests {
   #[actix_web::test]
   async fn test_artifacts_unauthorized() {
     let config = Arc::new(Config::default());
+    let storage = StorageStore::new(&config).expect("storage");
     let app = test::init_service(
       App::new()
         .app_data(Data::new(config.clone()))
-        .configure(configure(&config)),
+        .app_data(Data::new(storage))
+        .configure(configure),
     )
     .await;
     let req = test::TestRequest::default()
@@ -201,10 +319,12 @@ mod artifacts_tests {
   #[actix_web::test]
   async fn test_artifacts_authorized() {
     let config = Arc::new(Config::default().with_turbo_tokens(vec!["test".to_string()]));
+    let storage = StorageStore::new(&config).expect("storage");
     let app = test::init_service(
       App::new()
         .app_data(Data::new(config.clone()))
-        .configure(configure(&config)),
+        .app_data(Data::new(storage))
+        .configure(configure),
     )
     .await;
     let req = test::TestRequest::default()
@@ -224,10 +344,12 @@ mod artifacts_tests {
   #[actix_web::test]
   async fn test_artifacts_without_team_param() {
     let config = Arc::new(Config::default().with_turbo_tokens(vec!["test".to_string()]));
+    let storage = StorageStore::new(&config).expect("storage");
     let app = test::init_service(
       App::new()
         .app_data(Data::new(config.clone()))
-        .configure(configure(&config)),
+        .app_data(Data::new(storage))
+        .configure(configure),
     )
     .await;
     let req = test::TestRequest::default()
@@ -243,10 +365,12 @@ mod artifacts_tests {
   #[actix_web::test]
   async fn test_artifacts_head_ok() {
     let config = Arc::new(Config::default().with_turbo_tokens(vec!["test".to_string()]));
+    let storage = StorageStore::new(&config).expect("storage");
     let app = test::init_service(
       App::new()
         .app_data(Data::new(config.clone()))
-        .configure(configure(&config)),
+        .app_data(Data::new(storage))
+        .configure(configure),
     )
     .await;
     let put_req = test::TestRequest::default()
@@ -273,10 +397,12 @@ mod artifacts_tests {
   #[actix_web::test]
   async fn test_artifacts_get_ok() {
     let config = Arc::new(Config::default().with_turbo_tokens(vec!["test".to_string()]));
+    let storage = StorageStore::new(&config).expect("storage");
     let app = test::init_service(
       App::new()
         .app_data(Data::new(config.clone()))
-        .configure(configure(&config)),
+        .app_data(Data::new(storage))
+        .configure(configure),
     )
     .await;
     let put_req = test::TestRequest::default()
@@ -305,10 +431,12 @@ mod artifacts_tests {
   #[actix_web::test]
   async fn test_artifacts_put_ok() {
     let config = Arc::new(Config::default().with_turbo_tokens(vec!["test".to_string()]));
+    let storage = StorageStore::new(&config).expect("storage");
     let app = test::init_service(
       App::new()
         .app_data(Data::new(config.clone()))
-        .configure(configure(&config)),
+        .app_data(Data::new(storage))
+        .configure(configure),
     )
     .await;
     let put_req = test::TestRequest::default()
@@ -332,10 +460,12 @@ mod artifacts_tests {
         .with_storage_provider(StorageProvider::File)
         .with_fs_cache_path("test_files".to_string()),
     );
+    let storage = StorageStore::new(&config).expect("storage");
     let app = test::init_service(
       App::new()
         .app_data(Data::new(config.clone()))
-        .configure(configure(&config)),
+        .app_data(Data::new(storage))
+        .configure(configure),
     )
     .await;
     let put_req = test::TestRequest::default()
@@ -366,10 +496,12 @@ mod artifacts_tests {
   #[actix_web::test]
   async fn test_artifacts_with_tag() {
     let config = Arc::new(Config::default().with_turbo_tokens(vec!["test".to_string()]));
+    let storage = StorageStore::new(&config).expect("storage");
     let app = test::init_service(
       App::new()
         .app_data(Data::new(config.clone()))
-        .configure(configure(&config)),
+        .app_data(Data::new(storage))
+        .configure(configure),
     )
     .await;
 
